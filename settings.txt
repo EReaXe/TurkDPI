@@ -1,0 +1,52 @@
+# TürkDPI Ayar Dosyası
+# Her satırın başındaki # işareti yorum satırı olduğunu belirtir
+
+# DPI Bypass Modu (0-8)
+# 0: Legacy1 - En uyumlu mod
+# 1: Legacy2 - HTTPS için daha iyi hız
+# 2: Legacy3 - HTTP ve HTTPS için daha iyi hız
+# 3: Legacy4 - En iyi hız
+# 4: Modern1 - Kararlı mod
+# 5: Modern2 - Hızlı mod
+# 6: Modern3 - Güvenli mod
+# 7: Modern4 - Ultra mod
+# 8: Modern5 - Tam koruma (Varsayılan)
+DPI_MODE=8
+
+# QUIC Protokolü Engelleme (true/false)
+BLOCK_QUIC=true
+
+# Pasif DPI Engelleme (true/false)
+BLOCK_PASSIVE_DPI=true
+
+# HTTP Fragmentasyon Değeri (2-6)
+HTTP_FRAGMENTATION=2
+
+# HTTPS Fragmentasyon Değeri (40-120)
+HTTPS_FRAGMENTATION=40
+
+# DNS Ayarları
+# 1: Cloudflare (1.1.1.1, 1.0.0.1)
+# 2: Google (8.8.8.8, 8.8.4.4)
+# 3: OpenDNS (208.67.222.222, 208.67.220.220)
+# 4: Özel DNS (Aşağıdaki DNS_PRIMARY ve DNS_SECONDARY kullanılır)
+DNS_PROVIDER=1
+
+# Özel DNS ayarları (DNS_PROVIDER=4 olduğunda kullanılır)
+DNS_PRIMARY=1.1.1.1
+DNS_SECONDARY=1.0.0.1
+
+# Otomatik Başlatma (true/false)
+AUTO_START=false
+
+# Host Header Modifikasyonu (true/false)
+MODIFY_HOST_HEADERS=true
+
+# TTL Modifikasyonu (true/false)
+MODIFY_TTL=true
+
+# TCP Optimizasyonları (true/false)
+OPTIMIZE_TCP=true
+
+# SSL/TLS Ayarları (true/false)
+ENABLE_SSL_OPTIMIZATION=true 
