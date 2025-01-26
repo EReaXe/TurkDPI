@@ -408,6 +408,76 @@ namespace TurkDPI
             }
         }
 
+        private void ResetDNSSettings()
+        {
+            try
+            {
+                // PowerShell ile tüm ağ adaptörlerinin DNS ayarlarını DHCP'ye çevir
+                using (var process = new System.Diagnostics.Process())
+                {
+                    process.StartInfo.FileName = "powershell.exe";
+                    process.StartInfo.Arguments = "-Command \"Get-NetAdapter | Where-Object {$_.Status -eq 'Up'} | Set-DnsClientServerAddress -ResetServerAddresses; Clear-DnsClientCache; Register-DnsClient\"";
+                    process.StartInfo.UseShellExecute = false;
+                    process.StartInfo.RedirectStandardOutput = true;
+                    process.StartInfo.CreateNoWindow = true;
+                    process.Start();
+                    process.WaitForExit();
+                }
+
+                // Browser DNS ayarlarını sıfırla
+                string[] browserPaths = {
+                    @"SOFTWARE\Policies\Mozilla\Firefox",
+                    @"SOFTWARE\Policies\Google\Chrome",
+                    @"SOFTWARE\Policies\Microsoft\Edge"
+                };
+
+                foreach (string path in browserPaths)
+                {
+                    try
+                    {
+                        using (RegistryKey browserKey = Registry.LocalMachine.OpenSubKey(path, true))
+                        {
+                            if (browserKey != null)
+                            {
+                                try { browserKey.DeleteValue("DNSOverHTTPS", false); } catch { }
+                                try { browserKey.DeleteValue("DOHProviderURL", false); } catch { }
+                                try { browserKey.DeleteValue("DnsOverHttpsMode", false); } catch { }
+                                try { browserKey.DeleteValue("DnsOverHttpsTemplates", false); } catch { }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
+                // TCP/IP DNS ayarlarını sıfırla
+                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters", true))
+                {
+                    if (key != null)
+                    {
+                        try { key.DeleteValue("NameServer", false); } catch { }
+                        try { key.DeleteValue("SearchList", false); } catch { }
+                        try { key.DeleteValue("DhcpNameServer", false); } catch { }
+                        try { key.DeleteValue("DhcpDomain", false); } catch { }
+                    }
+                }
+
+                // DNS istemci ayarlarını sıfırla
+                using (var process = new System.Diagnostics.Process())
+                {
+                    process.StartInfo.FileName = "ipconfig";
+                    process.StartInfo.Arguments = "/flushdns";
+                    process.StartInfo.UseShellExecute = false;
+                    process.StartInfo.CreateNoWindow = true;
+                    process.Start();
+                    process.WaitForExit();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DNS ayarları sıfırlanırken hata: {ex.Message}");
+            }
+        }
+
         public void DisableDpiBypass()
         {
             try
@@ -418,14 +488,35 @@ namespace TurkDPI
                     return;
                 }
 
+                // Önce tüm servisleri durdur
+                try
+                {
+                    using (var process = new System.Diagnostics.Process())
+                    {
+                        process.StartInfo.FileName = "cmd.exe";
+                        process.StartInfo.Arguments = "/c net stop dnscache && net stop iphlpsvc && net stop nsi";
+                        process.StartInfo.UseShellExecute = false;
+                        process.StartInfo.CreateNoWindow = true;
+                        process.Start();
+                        process.WaitForExit();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Servisler durdurulurken hata: {ex.Message}");
+                }
+
+                // DNS ayarlarını sıfırla
+                ResetDNSSettings();
+
                 // Windows ağ ayarlarını sıfırla
                 try
                 {
                     using (var process = new System.Diagnostics.Process())
                     {
-                        // Ağ ayarlarını sıfırla
+                        // Winsock kataloğunu sıfırla
                         process.StartInfo.FileName = "netsh";
-                        process.StartInfo.Arguments = "winsock reset";
+                        process.StartInfo.Arguments = "winsock reset catalog";
                         process.StartInfo.UseShellExecute = false;
                         process.StartInfo.RedirectStandardOutput = true;
                         process.StartInfo.CreateNoWindow = true;
@@ -433,7 +524,12 @@ namespace TurkDPI
                         process.WaitForExit();
 
                         // TCP/IP stack'i sıfırla
-                        process.StartInfo.Arguments = "int ip reset";
+                        process.StartInfo.Arguments = "int ip reset c:\\resetlog.txt";
+                        process.Start();
+                        process.WaitForExit();
+
+                        // IP ayarlarını yenile
+                        process.StartInfo.Arguments = "int ip set dns name=\"*\" source=dhcp";
                         process.Start();
                         process.WaitForExit();
 
@@ -481,74 +577,23 @@ namespace TurkDPI
                     }
                 }
 
-                // Browser ayarlarını sıfırla
-                string[] browserPaths = {
-                    @"SOFTWARE\Policies\Mozilla\Firefox",
-                    @"SOFTWARE\Policies\Google\Chrome",
-                    @"SOFTWARE\Policies\Microsoft\Edge"
-                };
-
-                foreach (string path in browserPaths)
-                {
-                    try
-                    {
-                        using (RegistryKey browserKey = Registry.LocalMachine.OpenSubKey(path, true))
-                        {
-                            if (browserKey != null)
-                            {
-                                try { browserKey.DeleteValue("DNSOverHTTPS", false); } catch { }
-                                try { browserKey.DeleteValue("DOHProviderURL", false); } catch { }
-                                try { browserKey.DeleteValue("DnsOverHttpsMode", false); } catch { }
-                                try { browserKey.DeleteValue("DnsOverHttpsTemplates", false); } catch { }
-                            }
-                        }
-                    }
-                    catch { }
-                }
-
-                // SSL/TLS ayarlarını sıfırla
-                try
-                {
-                    using (RegistryKey securityKey = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols", true))
-                    {
-                        if (securityKey != null)
-                        {
-                            try { securityKey.DeleteSubKeyTree("TLS 1.2", false); } catch { }
-                            try { securityKey.DeleteSubKeyTree("TLS 1.3", false); } catch { }
-                        }
-                    }
-                }
-                catch { }
-
-                // DNS ayarlarını varsayılana döndür
+                // Tüm servisleri yeniden başlat
                 try
                 {
                     using (var process = new System.Diagnostics.Process())
                     {
-                        process.StartInfo.FileName = "powershell.exe";
-                        process.StartInfo.Arguments = "-Command \"Get-NetAdapter | Where-Object {$_.Status -eq 'Up'} | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.InterfaceIndex -ResetServerAddresses }\"";
+                        process.StartInfo.FileName = "cmd.exe";
+                        process.StartInfo.Arguments = "/c net start nsi && net start iphlpsvc && net start dnscache";
                         process.StartInfo.UseShellExecute = false;
-                        process.StartInfo.RedirectStandardOutput = true;
                         process.StartInfo.CreateNoWindow = true;
                         process.Start();
                         process.WaitForExit();
                     }
                 }
-                catch { }
-
-                // Internet Explorer/Edge eski ayarlarını sıfırla
-                try
+                catch (Exception ex)
                 {
-                    using (RegistryKey certKey = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Internet Settings", true))
-                    {
-                        if (certKey != null)
-                        {
-                            try { certKey.DeleteValue("VerifyServerCertificate", false); } catch { }
-                            try { certKey.DeleteValue("WarnOnBadCertRecving", false); } catch { }
-                        }
-                    }
+                    Console.WriteLine($"Servisler başlatılırken hata: {ex.Message}");
                 }
-                catch { }
 
                 // Değişkenleri sıfırla
                 isEnabled = false;
@@ -560,21 +605,6 @@ namespace TurkDPI
                 httpFragmentationValue = 2;
                 httpsFragmentationValue = 40;
 
-                // Windows servislerini yeniden başlat
-                try
-                {
-                    using (var process = new System.Diagnostics.Process())
-                    {
-                        process.StartInfo.FileName = "cmd.exe";
-                        process.StartInfo.Arguments = "/c net stop dnscache && net start dnscache";
-                        process.StartInfo.UseShellExecute = false;
-                        process.StartInfo.CreateNoWindow = true;
-                        process.Start();
-                        process.WaitForExit();
-                    }
-                }
-                catch { }
-                
                 Console.ForegroundColor = ConsoleColor.Yellow;
                 Console.WriteLine("\nDPI Bypass başarıyla devre dışı bırakıldı.");
                 Console.WriteLine("Tüm ağ ayarları varsayılan değerlerine döndürüldü.");
